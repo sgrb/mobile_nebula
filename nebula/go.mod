@@ -1,8 +1,6 @@
 module github.com/DefinedNet/mobile_nebula/nebula
 
-go 1.22.0
-
-toolchain go1.22.4
+go 1.24.1
 
 // replace github.com/slackhq/nebula => /Volumes/T7/nate/src/github.com/slackhq/nebula
 

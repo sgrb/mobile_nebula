@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs = { self, nixpkgs }:
@@ -25,6 +25,7 @@
             platformToolsVersion = "35.0.2";
             # latest https://developer.android.com/tools/releases/sdk-tools
             toolsVersion = "26.1.1";
+            cmakeVersions = [ "3.22.1" ];
             extraLicenses = [
               "android-googletv-license"
               "android-sdk-arm-dbt-license"
@@ -64,41 +65,31 @@
             };
           });
 
-          jdk = lib.trivial.throwIfNot (lib.versions.major pkgs.jdk.version == "21")
-            "jdk updated to ${lib.versions.major pkgs.jdk.version}, sync android/app/build.gradle versions"
-            pkgs.jdk;
+          jdk = pkgs.jdk17_headless;
 
           flutter = pkgs.flutter;
 
-          # fix starting vpn sometimes failing
-          # "bulkBarrierPreWrite: unaligned arguments"
-          go = pkgs.go.overrideAttrs (old: {
-            patches = old.patches ++ [
-              (pkgs.fetchpatch2 {
-                url = "https://github.com/golang/go/pull/53064.patch";
-                hash = "sha256-MB/8sSssGNJALHk7Xp+5IfQdsjqB3gz/Crj+MxbzVz0=";
-              })
-            ];
-          });
+          go = pkgs.go_1_24;
+
           buildGoModule = pkgs.buildGoModule.override {
             inherit go;
           };
+
           gomobile = (pkgs.gomobile.override {
             androidPkgs = androidComposition;
             inherit buildGoModule;
           }).overrideAttrs (prev: {
-            src = (pkgs.applyPatches {
-              src = pkgs.fetchFromGitHub {
-                owner = "golang";
-                repo = "mobile";
-                # needs to match golang.org/x/mobile version in nebula/go.mod
-                rev = "c31d5b91ecc32c0d598b8fe8457d244ca0b4e815";
-                hash = "sha256-SD+/QGJejtqAkAdbd8kg7MON9Yg/0qQEKO8RfxI+1bg=";
-              };
-              patches = [
-                ./gomobile.patch
-              ];
-            });
+            src = pkgs.fetchFromGitHub {
+              owner = "golang";
+              repo = "mobile";
+              # needs to match golang.org/x/mobile version in nebula/go.mod
+              rev = "c31d5b91ecc32c0d598b8fe8457d244ca0b4e815";
+              hash = "sha256-SD+/QGJejtqAkAdbd8kg7MON9Yg/0qQEKO8RfxI+1bg=";
+            };
+
+            patches = [
+              ./gomobile.patch
+            ];
 
             postPatch = (prev.postPatch or "") + ''
               substituteInPlace cmd/gobind/gen.go \
@@ -149,7 +140,7 @@
           '';
         in
         rec {
-          inherit self gomobile androidComposition platformTools androidStudio jdk flutter emulator;
+          inherit self androidComposition platformTools androidStudio jdk flutter emulator;
 
           sign = pkgs.writeShellApplication {
             name = "sign";
@@ -167,13 +158,13 @@
             '';
           };
 
-          nebula-go = buildGoModule {
+          nebula-go = pkgs.buildGo124Module {
             pname = "nebula-go";
             version = "0.1.0" + revSuffix;
 
             src = ./nebula;
 
-            vendorHash = "sha256-x1pK1JGAc2URXVUI2ApuP6KaX0t8qHtpqzaYsCKTDCY=";
+            vendorHash = "sha256-zZD4UFoc/o72/GJ8NJVtyzNn93pmtik5HAf5C+0CSjw=";
 
             proxyVendor = true;
             overrideModAttrs = (final: prev: {
@@ -203,7 +194,7 @@
             dontDartInstall = true;
             dontDartInstallCache = true;
 
-            outputHash = "sha256-B+gLch0yRv1q7eILr8vGBwoTsM2Gqvmlzgb4m6XPSdg=";
+            outputHash = "sha256-rismWnCbX9m3FzHYmPP4RhYDCw/Kr0SgooIFf1UwStk=";
             outputHashAlgo = "sha256";
             outputHashMode = "flat";
           }).overrideAttrs (prev: {
@@ -261,7 +252,7 @@
               clang
               dart
               gcc
-              go
+              go_1_24
               gomobile
               jdk
               platformTools
@@ -382,11 +373,13 @@
             inherit system;
             config = {
               android_sdk.accept_license = true;
-              allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
-                "android-sdk-cmdline-tools"
-                "android-sdk-tools"
-                "android-studio-stable"
-              ];
+              allowUnfreePredicate = pkg: let
+                name = (lib.getName pkg);
+              in
+                (builtins.match "^android-sdk-.*" name != null) ||
+                (builtins.elem name [
+                  "android-studio-stable"
+                ]);
             };
           };
         in
